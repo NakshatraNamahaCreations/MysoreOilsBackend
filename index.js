@@ -10,6 +10,7 @@ const orderRoutes = require("./routes/orderRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const wishlistRoutes =require("./routes/wishlistRoutes")
+const paymentRoutes = require("./routes/paymentRoutes");
 dotenv.config();
 const app = express();
 
@@ -77,6 +78,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/wishlist", wishlistRoutes);
+app.use("/api/payment", paymentRoutes);
 app.use((req, res, next) => {
   res.status(404).json({ error: "Route not found" });
 });

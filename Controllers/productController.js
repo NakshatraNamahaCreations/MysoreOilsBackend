@@ -39,7 +39,7 @@ const productController = {
       console.log("Incoming body:", req.body);
       console.log("Uploaded files:", req.files);
 
-      const { name, category, stock, description, variants, discountPrice } = req.body;
+      const { name, category, stock, description, variants, } = req.body;
 
       if (!name || !category || stock === undefined || !description || !variants) {
         return res.status(400).json({ error: "All fields are required." });
@@ -86,7 +86,6 @@ const productController = {
         benefitsImage,
         usesImage,
         nutritionImage,
-        discountPrice: discountPrice || 0,
         soldStock:0,
       });
 
@@ -157,7 +156,7 @@ const productController = {
 
   updateProduct: async (req, res) => {
     try {
-      const { name, category, stock, description, variants, discountPrice, replacedImageIndices, newImageCount } = req.body;
+      const { name, category, stock, description, variants, replacedImageIndices, newImageCount } = req.body;
       const product = await Product.findById(req.params.id);
 
       if (!product) {
@@ -168,7 +167,7 @@ const productController = {
       if (category) product.category = category;
       if (stock !== undefined) product.stock = stock;
       if (description) product.description = description;
-      if (discountPrice !== undefined) product.discountPrice = discountPrice;
+  
 
       if (variants) {
         try {
