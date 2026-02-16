@@ -1,174 +1,181 @@
 const Order = require("../models/Order");
 const Address = require("../models/Address");
 const Product = require("../models/Product");
+
 const { createShipcorrectOrder } = require("../utils/Shipcorrect");
+const {
+  initiatePhonePePayment,
+  verifyPhonePePayment,
+} = require("../utils/phonepe");
 
-const orderController = {
+/* ======================================================
+   INITIATE PAYMENT (CREATE TEMP ORDER)
+====================================================== */
+exports.initiatePayment = async (req, res) => {
+  try {
+    const { amount, items, addressId, callbackUrl } = req.body;
 
-  /* ================= CREATE ORDER ================= */
-  createOrder: async (req, res) => {
-    try {
-      const {
-        addressId,
-        amount,
-        paymentMode,
-        quantity,
-        productImage,
-        productName,
-      } = req.body;
-
-      // Validate required fields
-      if (!addressId || !amount || !paymentMode || !quantity || !productName) {
-        return res.status(400).json({
-          error: "All fields are required, including productName.",
-        });
-      }
-
-      // Validate address
-      const addressExists = await Address.findById(addressId);
-      if (!addressExists) {
-        return res.status(404).json({ error: "Address not found." });
-      }
-
-      // Find product
-      const product = await Product.findOne({ name: productName });
-      if (!product) {
-        return res.status(404).json({ error: "Product not found." });
-      }
-
-      // Check stock
-      if (product.stock < quantity) {
-        return res.status(400).json({
-          error: "Insufficient stock available.",
-        });
-      }
-
-      // Update stock
-      product.stock -= quantity;
-      product.soldStock = (product.soldStock || 0) + quantity;
-      await product.save();
-
-      // Create order
-      const newOrder = new Order({
-        address: addressId,
-        amount,
-        paymentMode,
-        quantity,
-        productImage,
-        productName,
-        status: "Pending",
-      });
-
-      await newOrder.save();
-
-      /* ================= SHIPCORRECT INTEGRATION ================= */
-      try {
-        const shipcorrectResponse =
-          await createShipcorrectOrder(newOrder._id);
-
-        // Save ShipCorrect order number if success
-        if (
-          shipcorrectResponse &&
-          shipcorrectResponse.status === "success"
-        ) {
-          newOrder.shipcorrectOrderNo =
-            shipcorrectResponse.order_no;
-
-          await newOrder.save();
-        }
-      } catch (shipErr) {
-        console.error(
-          "❌ ShipCorrect failed:",
-          shipErr.message
-        );
-        // Do not stop order creation if shipping fails
-      }
-
-      return res.status(201).json({
-        message: "Order created successfully",
-        order: newOrder,
-      });
-
-    } catch (error) {
-      console.error("Error creating order:", error);
-      res.status(500).json({
-        error: "Server error while creating order",
-      });
+    if (!amount || !items?.length || !addressId) {
+      return res.status(400).json({ error: "Missing required fields" });
     }
-  },
 
-  /* ================= GET ALL ORDERS ================= */
-  getAllOrders: async (req, res) => {
-    try {
-      const orders = await Order.find()
-        .populate("address")
-        .sort({ createdAt: -1 });
-
-      res.status(200).json(orders);
-    } catch (error) {
-      res.status(500).json({
-        error: "Server error while fetching orders",
-      });
+    const address = await Address.findById(addressId);
+    if (!address) {
+      return res.status(404).json({ error: "Address not found" });
     }
-  },
 
-  /* ================= GET SINGLE ORDER ================= */
-  getOrderById: async (req, res) => {
-    try {
-      const order = await Order.findById(req.params.id)
-        .populate("address");
+    // Create TEMP ORDER
+    const order = await Order.create({
+      address: addressId,
+      items,
+      amount,
+      paymentMode: "ONLINE",
+      status: "Payment Pending",
+    });
 
-      if (!order)
-        return res.status(404).json({ error: "Order not found" });
+    const phonepeResponse = await initiatePhonePePayment({
+      orderId: order._id,
+      amount,
+      callbackUrl,
+    });
 
-      res.status(200).json(order);
-    } catch (error) {
-      res.status(500).json({
-        error: "Server error while fetching order",
-      });
-    }
-  },
+    res.status(200).json({
+      phonepeResponse,
+      orderId: order._id,
+    });
 
-  /* ================= DELETE ORDER ================= */
-  deleteOrder: async (req, res) => {
-    try {
-      const order = await Order.findByIdAndDelete(req.params.id);
-
-      if (!order)
-        return res.status(404).json({ error: "Order not found" });
-
-      res.status(200).json({
-        message: "Order deleted successfully",
-      });
-    } catch (error) {
-      res.status(500).json({
-        error: "Server error while deleting order",
-      });
-    }
-  },
-
-  /* ================= UPDATE ORDER STATUS ================= */
-  updateOrderStatus: async (req, res) => {
-    try {
-      const { status } = req.body;
-
-      const updatedOrder = await Order.findByIdAndUpdate(
-        req.params.id,
-        { status },
-        { new: true }
-      ).populate("address");
-
-      if (!updatedOrder)
-        return res.status(404).json({ error: "Order not found" });
-
-      res.status(200).json(updatedOrder);
-    } catch (error) {
-      console.error("Error updating order status:", error);
-      res.status(500).json({
-        error: "Server error while updating status",
-      });
-    }
-  },
+  } catch (err) {
+    console.error("Payment Initiation Error:", err);
+    res.status(500).json({ error: "Failed to initiate payment" });
+  }
 };
 
-module.exports = orderController;
+
+/* ======================================================
+   VERIFY PAYMENT (FINALIZE ORDER)
+====================================================== */
+exports.verifyPayment = async (req, res) => {
+  try {
+    const { orderId, transactionId } = req.body;
+
+    if (!orderId || !transactionId) {
+      return res.status(400).json({ error: "Invalid verification data" });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Verify payment from PhonePe
+    const isPaid = await verifyPhonePePayment(transactionId);
+
+    if (!isPaid) {
+      order.status = "Payment Failed";
+      await order.save();
+      return res.status(400).json({ error: "Payment verification failed" });
+    }
+
+    /* =============================
+       REDUCE STOCK AFTER PAYMENT
+    ============================== */
+    for (const item of order.items) {
+      const product = await Product.findOne({
+        name: item.productName,
+      });
+
+      if (!product || product.stock < item.quantity) {
+        return res.status(400).json({
+          error: `Insufficient stock for ${item.productName}`,
+        });
+      }
+
+      product.stock -= item.quantity;
+      product.soldStock =
+        (product.soldStock || 0) + item.quantity;
+
+      await product.save();
+    }
+
+    order.status = "Paid";
+    order.transactionId = transactionId;
+    await order.save();
+
+    /* =============================
+       SHIPCORRECT ORDER
+    ============================== */
+    try {
+      const shipRes = await createShipcorrectOrder(order._id);
+
+      if (shipRes?.status === "success") {
+        order.shipcorrectOrderNo = shipRes.order_no;
+        await order.save();
+      }
+    } catch (err) {
+      console.error("ShipCorrect Error:", err.message);
+    }
+
+    res.status(200).json({
+      message: "Order placed successfully",
+      order,
+    });
+
+  } catch (err) {
+    console.error("Payment Verification Error:", err);
+    res.status(500).json({ error: "Payment verification failed" });
+  }
+};
+
+
+/* ======================================================
+   ADMIN APIs
+====================================================== */
+
+exports.getAllOrders = async (req, res) => {
+  try {
+    const orders = await Order.find()
+      .populate("address")
+      .sort({ createdAt: -1 });
+
+    res.json(orders);
+  } catch {
+    res.status(500).json({ error: "Failed to fetch orders" });
+  }
+};
+
+exports.getOrderById = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate("address");
+
+    if (!order)
+      return res.status(404).json({ error: "Order not found" });
+
+    res.json(order);
+  } catch {
+    res.status(500).json({ error: "Failed to fetch order" });
+  }
+};
+
+exports.updateOrderStatus = async (req, res) => {
+  try {
+    const order = await Order.findByIdAndUpdate(
+      req.params.id,
+      { status: req.body.status },
+      { new: true }
+    );
+
+    res.json(order);
+  } catch {
+    res.status(500).json({ error: "Failed to update order" });
+  }
+};
+
+exports.deleteOrder = async (req, res) => {
+  try {
+    await Order.findByIdAndDelete(req.params.id);
+    res.json({ message: "Order deleted" });
+  } catch {
+    res.status(500).json({ error: "Failed to delete order" });
+  }
+};
