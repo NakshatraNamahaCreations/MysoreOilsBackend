@@ -1,19 +1,14 @@
 const Order = require("../models/Order");
 const Address = require("../models/Address");
 const Product = require("../models/Product");
-
 const { createShipcorrectOrder } = require("../utils/Shipcorrect");
-const {
-  initiatePhonePePayment,
-  verifyPhonePePayment,
-} = require("../utils/getPhonePeToken");
 
 /* ======================================================
-   INITIATE PAYMENT (CREATE TEMP ORDER)
+   CREATE ORDER (COD - NO PAYMENT)
 ====================================================== */
-exports.initiatePayment = async (req, res) => {
+exports.createOrder = async (req, res) => {
   try {
-    const { amount, items, addressId, callbackUrl } = req.body;
+    const { amount, items, addressId } = req.body;
 
     if (!amount || !items?.length || !addressId) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -24,80 +19,43 @@ exports.initiatePayment = async (req, res) => {
       return res.status(404).json({ error: "Address not found" });
     }
 
-    // Create temporary order
-    const order = await Order.create({
-      address: addressId,
-      items,
-      amount,
-      paymentMode: "ONLINE",
-      status: "Payment Pending",
-    });
-
-    const phonepeResponse = await initiatePhonePePayment({
-      orderId: order._id,
-      amount,
-      callbackUrl,
-    });
-
-    res.status(200).json({
-      phonepeResponse,
-      orderId: order._id,
-    });
-
-  } catch (err) {
-    console.error("Payment Initiation Error:", err);
-    res.status(500).json({ error: "Failed to initiate payment" });
-  }
-};
-
-
-/* ======================================================
-   VERIFY PAYMENT (PHONEPE CALLBACK)
-====================================================== */
-exports.verifyPayment = async (req, res) => {
-  try {
-    const { orderId, transactionId } = req.body;
-
-    if (!orderId || !transactionId) {
-      return res.redirect(
-        "https://themysoreoils.com/payment-failed"
-      );
-    }
-
-    const order = await Order.findById(orderId);
-    if (!order) {
-      return res.redirect(
-        "https://themysoreoils.com/payment-failed"
-      );
-    }
-
     /* =============================
-       VERIFY PAYMENT
+       CHECK STOCK FIRST
     ============================== */
-    const isPaid = await verifyPhonePePayment(transactionId);
-
-    if (!isPaid) {
-      order.status = "Payment Failed";
-      await order.save();
-
-      return res.redirect(
-        "https://themysoreoils.com/payment-failed"
-      );
-    }
-
-    /* =============================
-       REDUCE STOCK
-    ============================== */
-    for (const item of order.items) {
+    for (const item of items) {
       const product = await Product.findOne({
         name: item.productName,
       });
 
       if (!product || product.stock < item.quantity) {
-        return res.redirect(
-          "https://themysoreoils.com/payment-failed"
-        );
+        return res.status(400).json({
+          error: `Insufficient stock for ${item.productName}`,
+        });
       }
+    }
+
+    /* =============================
+       CREATE ORDER
+    ============================== */
+    const merchantOrderId = `ORD_${Date.now()}_${Math.floor(Math.random()*1000)}`;
+
+
+    const order = await Order.create({
+      address: addressId,
+      merchantOrderId,
+      amount,
+      paymentMode: "COD",
+      items, // ✅ save full items array
+      status: "Payment Pending",
+    });
+
+    /* =============================
+       REDUCE STOCK
+    ============================== */
+    for (const item of items) {
+      const product = await Product.findOne({
+        name: item.productName,
+      });
 
       product.stock -= item.quantity;
       product.soldStock =
@@ -105,10 +63,6 @@ exports.verifyPayment = async (req, res) => {
 
       await product.save();
     }
-
-    order.status = "Paid";
-    order.transactionId = transactionId;
-    await order.save();
 
     /* =============================
        CREATE SHIPCORRECT ORDER
@@ -124,22 +78,16 @@ exports.verifyPayment = async (req, res) => {
       console.error("ShipCorrect Error:", err.message);
     }
 
-    /* =============================
-       SUCCESS REDIRECT
-    ============================== */
-    return res.redirect(
-      `https://themysoreoils.com/thank-you`
-    );
+    res.status(201).json({
+      message: "Order placed successfully",
+      order,
+    });
 
   } catch (err) {
-    console.error("Payment Verification Error:", err);
-
-    return res.redirect(
-      "https://themysoreoils.com/payment-failed"
-    );
+    console.error("Order Creation Error:", err);
+    res.status(500).json({ error: "Failed to create order" });
   }
 };
-
 
 /* ======================================================
    ADMIN APIs
