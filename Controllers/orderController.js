@@ -6,7 +6,7 @@ const { createShipcorrectOrder } = require("../utils/Shipcorrect");
 const {
   initiatePhonePePayment,
   verifyPhonePePayment,
-} = require("../utils/phonepe");
+} = require("../utils/getPhonePeToken");
 
 /* ======================================================
    INITIATE PAYMENT (CREATE TEMP ORDER)
@@ -24,7 +24,7 @@ exports.initiatePayment = async (req, res) => {
       return res.status(404).json({ error: "Address not found" });
     }
 
-    // Create TEMP ORDER
+    // Create temporary order
     const order = await Order.create({
       address: addressId,
       items,
@@ -52,32 +52,41 @@ exports.initiatePayment = async (req, res) => {
 
 
 /* ======================================================
-   VERIFY PAYMENT (FINALIZE ORDER)
+   VERIFY PAYMENT (PHONEPE CALLBACK)
 ====================================================== */
 exports.verifyPayment = async (req, res) => {
   try {
     const { orderId, transactionId } = req.body;
 
     if (!orderId || !transactionId) {
-      return res.status(400).json({ error: "Invalid verification data" });
+      return res.redirect(
+        "https://themysoreoils.com/payment-failed"
+      );
     }
 
     const order = await Order.findById(orderId);
     if (!order) {
-      return res.status(404).json({ error: "Order not found" });
+      return res.redirect(
+        "https://themysoreoils.com/payment-failed"
+      );
     }
 
-    // Verify payment from PhonePe
+    /* =============================
+       VERIFY PAYMENT
+    ============================== */
     const isPaid = await verifyPhonePePayment(transactionId);
 
     if (!isPaid) {
       order.status = "Payment Failed";
       await order.save();
-      return res.status(400).json({ error: "Payment verification failed" });
+
+      return res.redirect(
+        "https://themysoreoils.com/payment-failed"
+      );
     }
 
     /* =============================
-       REDUCE STOCK AFTER PAYMENT
+       REDUCE STOCK
     ============================== */
     for (const item of order.items) {
       const product = await Product.findOne({
@@ -85,9 +94,9 @@ exports.verifyPayment = async (req, res) => {
       });
 
       if (!product || product.stock < item.quantity) {
-        return res.status(400).json({
-          error: `Insufficient stock for ${item.productName}`,
-        });
+        return res.redirect(
+          "https://themysoreoils.com/payment-failed"
+        );
       }
 
       product.stock -= item.quantity;
@@ -102,7 +111,7 @@ exports.verifyPayment = async (req, res) => {
     await order.save();
 
     /* =============================
-       SHIPCORRECT ORDER
+       CREATE SHIPCORRECT ORDER
     ============================== */
     try {
       const shipRes = await createShipcorrectOrder(order._id);
@@ -115,14 +124,19 @@ exports.verifyPayment = async (req, res) => {
       console.error("ShipCorrect Error:", err.message);
     }
 
-    res.status(200).json({
-      message: "Order placed successfully",
-      order,
-    });
+    /* =============================
+       SUCCESS REDIRECT
+    ============================== */
+    return res.redirect(
+      `https://themysoreoils.com/thank-you`
+    );
 
   } catch (err) {
     console.error("Payment Verification Error:", err);
-    res.status(500).json({ error: "Payment verification failed" });
+
+    return res.redirect(
+      "https://themysoreoils.com/payment-failed"
+    );
   }
 };
 
