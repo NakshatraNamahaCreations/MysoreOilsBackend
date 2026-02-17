@@ -21,24 +21,28 @@ router.get("/", async (req, res) => {
 ========================= */
 router.post("/", upload.single("image"), async (req, res) => {
   try {
-  const banner = new Banner({
-  title: req.body.title,
-  subtitle: req.body.subtitle,
-  desc: req.body.desc,
-  titleColor: req.body.titleColor,
-  subtitleColor: req.body.subtitleColor,
-  descColor: req.body.descColor,
-  image: `/uploads/banners/${req.file.filename}`,
-  status: req.body.status === "true" || req.body.status === true,
-});
-
+    const banner = new Banner({
+      title: req.body.title,
+      subtitle: req.body.subtitle,
+      desc: req.body.desc,
+      titleColor: req.body.titleColor,
+      subtitleColor: req.body.subtitleColor,
+      descColor: req.body.descColor,
+      image: req.file?.path, // ✅ Cloudinary URL
+      status:
+        req.body.status === "true" || req.body.status === true,
+    });
 
     await banner.save();
     res.status(201).json(banner);
   } catch (err) {
-    console.log(err);
-    res.status(400).json({ message: "Failed to create banner" });
-  }
+  console.error("UPLOAD ERROR:", err);
+  res.status(500).json({
+    message: err.message,
+    error: err,
+  });
+}
+
 });
 
 /* =========================
@@ -46,21 +50,20 @@ router.post("/", upload.single("image"), async (req, res) => {
 ========================= */
 router.put("/:id", upload.single("image"), async (req, res) => {
   try {
-   const updateData = {
-  title: req.body.title,
-  subtitle: req.body.subtitle,
-  desc: req.body.desc,
-  titleColor: req.body.titleColor,
-  subtitleColor: req.body.subtitleColor,
-  descColor: req.body.descColor,
-  status: req.body.status === "true" || req.body.status === true,
-};
-
-
+    const updateData = {
+      title: req.body.title,
+      subtitle: req.body.subtitle,
+      desc: req.body.desc,
+      titleColor: req.body.titleColor,
+      subtitleColor: req.body.subtitleColor,
+      descColor: req.body.descColor,
+      status:
+        req.body.status === "true" || req.body.status === true,
+    };
 
     // Update image only if new image uploaded
     if (req.file) {
-      updateData.image = `/uploads/banners/${req.file.filename}`;
+      updateData.image = req.file.path; // ✅ Cloudinary URL
     }
 
     const banner = await Banner.findByIdAndUpdate(
@@ -86,6 +89,7 @@ router.put("/:id", upload.single("image"), async (req, res) => {
 router.patch("/:id/status", async (req, res) => {
   try {
     const banner = await Banner.findById(req.params.id);
+
     if (!banner)
       return res.status(404).json({ message: "Banner not found" });
 
