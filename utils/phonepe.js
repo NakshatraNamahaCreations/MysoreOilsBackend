@@ -2,7 +2,7 @@ const axios = require("axios");
 const getPhonePeToken = require("./getPhonePeToken");
 
 const PHONEPE_PAY_URL =
-  "https://api-preprod.phonepe.com/apis/pg-sandbox/pg/v1/pay";
+  "https://api.phonepe.com/apis/pg";
 
 async function initiatePhonePePayment({
   orderId,
