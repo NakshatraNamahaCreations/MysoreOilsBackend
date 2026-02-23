@@ -12,19 +12,39 @@ async function initiatePhonePePayment({
   try {
     const token = await getPhonePeToken();
 
+    // const payload = {
+    // //   merchantId: process.env.PHONEPE_MERCHANT_ID,
+    //   merchantTransactionId: `ORD_${Date.now()}`,
+    //   merchantUserId: `USER_${orderId}`,
+    //   amount: amount * 100, // in paise
+    //   redirectUrl: callbackUrl,
+    //   redirectMode: "REDIRECT",
+    //   callbackUrl: callbackUrl,
+    //   mobileNumber: "9999999999",
+    //   paymentInstrument: {
+    //     type: "PAY_PAGE",
+    //   },
+    // };
+
     const payload = {
-    //   merchantId: process.env.PHONEPE_MERCHANT_ID,
-      merchantTransactionId: `ORD_${Date.now()}`,
-      merchantUserId: `USER_${orderId}`,
-      amount: amount * 100, // in paise
-      redirectUrl: callbackUrl,
-      redirectMode: "REDIRECT",
-      callbackUrl: callbackUrl,
-      mobileNumber: "9999999999",
-      paymentInstrument: {
-        type: "PAY_PAGE",
-      },
-    };
+  merchantId: process.env.PHONEPE_CLIENT_ID,
+
+  merchantTransactionId: `ORD_${Date.now()}`,
+  merchantUserId: `USER_${orderId}`,
+
+  amount: amount * 100,
+
+  redirectUrl: `${process.env.FRONTEND_URL}/payment-status`,
+  redirectMode: "REDIRECT",
+
+  callbackUrl: `${process.env.BACKEND_URL}/api/payment/phonepe/callback`,
+
+  mobileNumber: "9591707458",
+
+  paymentInstrument: {
+    type: "PAY_PAGE",
+  },
+};
 
     console.log("📦 PhonePe Payload:", payload);
 

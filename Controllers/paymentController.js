@@ -94,80 +94,83 @@ exports.initiatePayment = async (req, res) => {
 
 // 🔹 VERIFY PAYMENT
 exports.verifyPayment = async (req, res) => {
-    try {
-      const { merchantId } = req.query;
-  
-      if (!merchantId) {
-        return res.status(400).json({ error: "merchantId is required" });
-      }
-      console.log(typeof amount, amount)
-  
-      // Find pending order
-      const order = await Order.findOne({
-        merchantTransactionId: merchantId,
-      }).populate("address");
-  
-      if (!order) {
-        return res.redirect(`https://themysoreoils.com/payment-failed`);
-      }
-  
-      // Get PhonePe token
-      const accessToken = await getPhonePeToken();
-  
-      // PhonePe Status API
-      const statusUrl = `https://api.phonepe.com/apis/pg/checkout/v2/order/${merchantId}/status`;
-  
-      const response = await axios.get(statusUrl, {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `O-Bearer ${accessToken}`,
-        },
-      });
-  
-      const statusResult = response.data;
-      console.log("📩 PhonePe Verification Response:", statusResult);
-  
-      // SUCCESS
-      if (statusResult?.state === "COMPLETED") {
-        order.status = "Paid";
-        order.paymentTransactionId = statusResult.transactionId;
-        await order.save();
-  
-        console.log("💸 Payment Success → Creating Shiprocket order...");
-  
-        try {
-          const shipment = await createShipcorrectOrder(order._id);
-  
-          if (shipment) {
-            console.log("🚀 Shipcorrect order created:", shipment);
-  
-            await Order.findByIdAndUpdate(order._id, {
-              $set: {
-                shiprocket: {
-                  order_id: shipment.order_id,
-                  shipment_id: shipment.shipment_id,
-                  status: shipment.status,
-                  awb_code: shipment.awb_code || null,
-                },
-              },
-            });
-          }
-        } catch (error) {
-          console.error("❌ Shipcorrect creation failed:", error);
-        }
-  
-        // Redirect to thankyou
-        return res.redirect("https://themysoreoils.com/thankyou");
-      }
-  
-      // FAILED PAYMENT
-      console.log("Payment not successful:", statusResult);
-      order.status = "Failed";
-      await order.save();
-  
-      return res.redirect(`https://themysoreoils.com/payment-failed`);
-    } catch (err) {
-      console.error("💥 Payment verification error:", err);
-      return res.status(500).json({ error: "Error verifying payment" });
+  try {
+    const { merchantId } = req.query;
+
+    if (!merchantId) {
+      return res.redirect(
+        "https://themysoreoils.com/payment-failed"
+      );
     }
+
+    const order = await Order.findOne({
+      merchantTransactionId: merchantId,
+    }).populate("address");
+
+    if (!order) {
+      return res.redirect(
+        "https://themysoreoils.com/payment-failed"
+      );
+    }
+
+    const accessToken = await getPhonePeToken();
+
+    const statusUrl = `https://api.phonepe.com/apis/pg/checkout/v2/order/${merchantId}/status`;
+
+    const response = await axios.get(statusUrl, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `O-Bearer ${accessToken}`,
+      },
+    });
+
+    const paymentState = response.data?.state;
+
+    console.log("📩 PhonePe State:", paymentState);
+
+    /* ================= SUCCESS ================= */
+    if (paymentState === "COMPLETED") {
+      order.status = "Paid";
+      order.paymentTransactionId = response.data?.transactionId;
+      await order.save();
+
+      try {
+        const shipment = await createShipcorrectOrder(order._id);
+
+        if (shipment) {
+          await Order.findByIdAndUpdate(order._id, {
+            $set: {
+              shiprocket: {
+                order_id: shipment.order_id,
+                shipment_id: shipment.shipment_id,
+                status: shipment.status,
+                awb_code: shipment.awb_code || null,
+              },
+            },
+          });
+        }
+      } catch (error) {
+        console.error("Shipcorrect failed:", error);
+      }
+
+      return res.redirect(
+        "https://themysoreoils.com/thankyou"
+      );
+    }
+
+    /* ================= FAILED / CANCELLED ================= */
+    order.status = "Failed";
+    await order.save();
+
+    return res.redirect(
+      "https://themysoreoils.com/payment-failed"
+    );
+
+  } catch (err) {
+    console.error("Payment verification error:", err);
+
+    return res.redirect(
+      "https://themysoreoils.com/payment-failed"
+    );
+  }
 };
