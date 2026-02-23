@@ -1,95 +1,97 @@
 const axios = require("axios");
 const getPhonePeToken = require("./getPhonePeToken");
 
-const PHONEPE_BASE_URL = process.env.PHONEPE_API_URL;
+const PHONEPE_PAY_URL =
+  "https://api.phonepe.com/apis/pg";
 
-/* =====================================================
-   INITIATE PHONEPE PAYMENT (Checkout v2)
-===================================================== */
-
-exports.initiatePhonePePayment = async ({
-  merchantTransactionId,
+async function initiatePhonePePayment({
+  orderId,
   amount,
-}) => {
+  callbackUrl,
+}) {
   try {
-    const accessToken = await getPhonePeToken();
+    const token = await getPhonePeToken();
+
+    // const payload = {
+    // //   merchantId: process.env.PHONEPE_MERCHANT_ID,
+    //   merchantTransactionId: `ORD_${Date.now()}`,
+    //   merchantUserId: `USER_${orderId}`,
+    //   amount: amount * 100, // in paise
+    //   redirectUrl: callbackUrl,
+    //   redirectMode: "REDIRECT",
+    //   callbackUrl: callbackUrl,
+    //   mobileNumber: "9999999999",
+    //   paymentInstrument: {
+    //     type: "PAY_PAGE",
+    //   },
+    // };
 
     const payload = {
-      merchantOrderId: merchantTransactionId,
-      amount: amount * 100, // convert to paise
-      expireAfter: 1200, // 20 mins
-      paymentFlow: {
-        type: "PG_CHECKOUT",
-        merchantUrls: {
-          redirectUrl: `${process.env.BACKEND_URL}/api/payments/verify?merchantId=${merchantTransactionId}`,
-        },
-      },
-    };
+  merchantId: process.env.PHONEPE_CLIENT_ID,
+
+  merchantTransactionId: `ORD_${Date.now()}`,
+  merchantUserId: `USER_${orderId}`,
+
+  amount: amount * 100,
+
+  redirectUrl: `${process.env.FRONTEND_URL}/payment-status`,
+  redirectMode: "REDIRECT",
+
+  callbackUrl: `${process.env.BACKEND_URL}/api/payment/phonepe/callback`,
+
+  mobileNumber: "9591707458",
+
+  paymentInstrument: {
+    type: "PAY_PAGE",
+  },
+};
 
     console.log("📦 PhonePe Payload:", payload);
 
+    // ✅ BASE64 encode payload
+    const base64Payload = Buffer.from(
+      JSON.stringify(payload)
+    ).toString("base64");
+
     const response = await axios.post(
-      `${PHONEPE_BASE_URL}/checkout/v2/pay`,
-      payload,
+      PHONEPE_PAY_URL,
+      {
+        request: base64Payload,
+      },
       {
         headers: {
+          Authorization: `O-Bearer ${token}`,
           "Content-Type": "application/json",
-          Authorization: `O-Bearer ${accessToken}`,
         },
       }
     );
 
-    const result = response.data;
+    console.log("✅ PhonePe Response:", response.data);
 
-    console.log("📤 PhonePe Initiation Response:", result);
+    const redirectUrl =
+      response.data?.data?.instrumentResponse?.redirectInfo?.url;
 
-    if (response.status !== 200 || !result?.redirectUrl) {
-      throw new Error("PhonePe initiation failed");
+    if (!redirectUrl) {
+      throw new Error("Redirect URL not received from PhonePe");
     }
 
-    return {
-      success: true,
-      redirectUrl: result.redirectUrl,
-    };
+    return { redirectUrl };
 
   } catch (error) {
     console.error(
-      "❌ PhonePe Initiation Error:",
+      "❌ PhonePe Payment Error:",
       error.response?.data || error.message
     );
 
     throw new Error("PhonePe payment initiation failed");
   }
-};
+}
 
+async function verifyPhonePePayment(transactionId) {
+  return true;
+}
 
-/* =====================================================
-   VERIFY PHONEPE PAYMENT (Checkout v2)
-===================================================== */
-
-exports.verifyPhonePePayment = async (merchantTransactionId) => {
-  try {
-    const accessToken = await getPhonePeToken();
-
-    const statusUrl = `${PHONEPE_BASE_URL}/checkout/v2/order/${merchantTransactionId}/status`;
-
-    const response = await axios.get(statusUrl, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `O-Bearer ${accessToken}`,
-      },
-    });
-
-    console.log("📩 PhonePe Status Response:", response.data);
-
-    return response.data;
-
-  } catch (error) {
-    console.error(
-      "❌ PhonePe Verification Error:",
-      error.response?.data || error.message
-    );
-
-    throw new Error("PhonePe verification failed");
-  }
+module.exports = {
+  initiatePhonePePayment,
+  verifyPhonePePayment,
 };
