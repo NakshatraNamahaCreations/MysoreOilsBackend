@@ -100,6 +100,7 @@ exports.verifyPayment = async (req, res) => {
       if (!merchantId) {
         return res.status(400).json({ error: "merchantId is required" });
       }
+      console.log(typeof amount, amount)
   
       // Find pending order
       const order = await Order.findOne({
