@@ -54,7 +54,7 @@ exports.initiatePayment = async (req, res) => {
       paymentFlow: {
         type: "PG_CHECKOUT",
         merchantUrls: {
-          redirectUrl:  `https://api.themysoreoils.com/api/payments/verify?merchantId=${merchantTransactionId}`,
+          redirectUrl: `https://api.themysoreoils.com/api/payment/verify?merchantId=${merchantTransactionId}`,
         },
       },
     };
