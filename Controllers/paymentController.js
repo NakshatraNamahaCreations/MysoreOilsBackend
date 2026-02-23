@@ -54,7 +54,7 @@ exports.initiatePayment = async (req, res) => {
       paymentFlow: {
         type: "PG_CHECKOUT",
         merchantUrls: {
-          redirectUrl: `https://api.themysoreoils.com/api/payments/verify?merchantId=${merchantTransactionId}`,
+          redirectUrl:  `https://api.themysoreoils.com/api/payments/verify?merchantId=${merchantTransactionId}`,
         },
       },
     };
@@ -74,7 +74,7 @@ exports.initiatePayment = async (req, res) => {
     const result = response.data;
     console.log("📤 PhonePe initiation response:", result);
 
-    if (!response.status === 200 || !result?.redirectUrl) {
+    if (response.status !== 200 || !result?.redirectUrl) {
       await Order.deleteOne({ _id: pendingOrder._id });
       throw new Error("PhonePe initiation failed");
     }
