@@ -31,7 +31,8 @@ app.use(
       "https://www.themysoreoils.com",
       "http://localhost:3000",
       "http://localhost:5173",
-      "https://mysore-oils2.netlify.app"
+      "https://mysore-oils2.netlify.app",
+      "https://admin.themysoreoils.com/"
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
