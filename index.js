@@ -14,6 +14,9 @@ const customerRoutes = require("./routes/customerRoutes");
 const wishlistRoutes = require("./routes/wishlistRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
 const paymentRoutes = require("./routes/paymentRoutes"); // ✅ Added
+const contactRoutes = require("./routes/contactRoutes")
+
+
 
 dotenv.config();
 
@@ -83,6 +86,7 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/banners", bannerRoutes);
 app.use("/api/payment", paymentRoutes); // ✅ Payment route added
+app.use("/api", contactRoutes);
 
 /* ================= HEALTH CHECK ================= */
 app.get("/", (req, res) => {

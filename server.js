@@ -19,6 +19,10 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const bannerRoutes = require("./routes/bannerRoutes");
 app.use("/api/banners", bannerRoutes);
 
+const contactRoutes = require("./routes/contactRoutes")
+app.use("/api", contactRoutes);
+
+
 // 404 (LAST)
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
